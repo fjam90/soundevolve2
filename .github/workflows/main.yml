@@ -1,0 +1,49 @@
+name: Build plugin and installers
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [windows-latest, macos-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Configure
+        run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DCOPY_AFTER_BUILD=OFF
+
+      - name: Build
+        run: cmake --build build --config Release --parallel
+
+      - name: Upload plugin files
+        uses: actions/upload-artifact@v4
+        with:
+          name: Plugin-files-${{ matrix.os }}
+          path: build/MasterPreset_artefacts/Release/
+
+      # ---------- Windows: instalador .exe (Inno Setup) ----------
+      - name: Build Windows installer
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          choco install innosetup -y --no-progress
+          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" `
+            "/DArtefacts=$env:GITHUB_WORKSPACE\build\MasterPreset_artefacts\Release" `
+            "/DOutDir=$env:GITHUB_WORKSPACE\installer-out" `
+            installer\windows\installer.iss
+
+      # ---------- macOS: instalador .pkg ----------
+      - name: Build macOS installer
+        if: runner.os == 'macOS'
+        run: bash installer/mac/build_pkg.sh
+
+      - name: Upload installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: Installer-${{ matrix.os }}
+          path: installer-out/*
